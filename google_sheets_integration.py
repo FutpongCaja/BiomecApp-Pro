@@ -31,51 +31,69 @@ class GoogleSheetsManager:
         self.worksheet = None
 
         # Intentar conectar
+        print(f"🔌 Iniciando conexión a Google Sheets...")
+        print(f"📋 Buscando sheet: '{spreadsheet_name}'")
         try:
             self._connect()
         except Exception as e:
+            import traceback
             print(f"⚠️ No se pudo conectar a Google Sheets: {e}")
+            print(traceback.format_exc())
             print("📌 Los análisis se guardarán localmente pero no en Google Sheets")
 
     def _connect(self):
         """Establece la conexión con Google Sheets"""
         try:
             # Obtener credenciales (desde variable de entorno o archivo)
+            print("📦 Cargando credenciales...")
             creds_dict = self._load_credentials()
             if not creds_dict:
                 print("❌ No se encontraron credenciales de Google")
                 return
 
             # Autenticar con las credenciales de servicio
+            print("🔐 Autenticando con Google...")
             scopes = ['https://www.googleapis.com/auth/spreadsheets',
                      'https://www.googleapis.com/auth/drive']
             creds = Credentials.from_service_account_info(
                 creds_dict,
                 scopes=scopes
             )
+            print("✅ Credenciales autenticadas")
 
             # Crear cliente gspread
+            print("🌐 Creando cliente gspread...")
             self.client = gspread.authorize(creds)
+            print("✅ Cliente gspread listo")
 
             # Abrir o crear el spreadsheet
+            print(f"📂 Buscando spreadsheet: '{self.spreadsheet_name}'...")
             try:
                 self.sheet = self.client.open(self.spreadsheet_name)
+                print(f"✅ Encontrado spreadsheet: {self.spreadsheet_name}")
             except gspread.exceptions.SpreadsheetNotFound:
                 print(f"📝 Creando nuevo Google Sheet: {self.spreadsheet_name}")
                 self.sheet = self.client.create(self.spreadsheet_name)
                 self.sheet.share('', perm_type='anyone', role='writer')
+                print(f"✅ Google Sheet creado")
 
             # Seleccionar o crear worksheet "Análisis"
+            print("📄 Buscando worksheet 'Análisis'...")
             try:
                 self.worksheet = self.sheet.worksheet("Análisis")
+                print("✅ Worksheet 'Análisis' encontrado")
             except gspread.exceptions.WorksheetNotFound:
+                print("📝 Creando worksheet 'Análisis'...")
                 self.worksheet = self.sheet.add_worksheet(title="Análisis", rows=1000, cols=20)
                 self._setup_headers()
+                print("✅ Worksheet 'Análisis' creado")
 
             print(f"✅ Conectado a Google Sheets: {self.spreadsheet_name}")
 
         except Exception as e:
+            import traceback
             print(f"❌ Error conectando a Google Sheets: {e}")
+            print(traceback.format_exc())
             self.client = None
             self.sheet = None
             self.worksheet = None
