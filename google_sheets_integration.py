@@ -14,37 +14,43 @@ import os
 class GoogleSheetsManager:
     """Gestor para guardar análisis en Google Sheets"""
 
-    def __init__(self, credentials_json_path: str = "google_credentials.json",
+    def __init__(self, credentials_source: str = "google_credentials.json",
                  spreadsheet_name: str = "BiomecApp Pro - Análisis"):
         """
         Inicializa la conexión con Google Sheets
 
         Args:
-            credentials_json_path: Ruta al archivo credentials.json de Google
+            credentials_source: Ruta al archivo JSON O nombre de variable de entorno
             spreadsheet_name: Nombre del Google Sheet donde guardar datos
         """
         self.spreadsheet_name = spreadsheet_name
-        self.credentials_file = credentials_json_path
+        self.credentials_source = credentials_source
+        self.credentials_dict = None
         self.client = None
         self.sheet = None
         self.worksheet = None
 
-        # Intentar conectar si existen las credenciales
-        if os.path.exists(credentials_json_path):
-            try:
-                self._connect()
-            except Exception as e:
-                print(f"⚠️ No se pudo conectar a Google Sheets: {e}")
-                print("📌 Los análisis se guardarán localmente pero no en Google Sheets")
+        # Intentar conectar
+        try:
+            self._connect()
+        except Exception as e:
+            print(f"⚠️ No se pudo conectar a Google Sheets: {e}")
+            print("📌 Los análisis se guardarán localmente pero no en Google Sheets")
 
     def _connect(self):
         """Establece la conexión con Google Sheets"""
         try:
+            # Obtener credenciales (desde variable de entorno o archivo)
+            creds_dict = self._load_credentials()
+            if not creds_dict:
+                print("❌ No se encontraron credenciales de Google")
+                return
+
             # Autenticar con las credenciales de servicio
             scopes = ['https://www.googleapis.com/auth/spreadsheets',
                      'https://www.googleapis.com/auth/drive']
-            creds = Credentials.from_service_account_file(
-                self.credentials_file,
+            creds = Credentials.from_service_account_info(
+                creds_dict,
                 scopes=scopes
             )
 
@@ -73,6 +79,37 @@ class GoogleSheetsManager:
             self.client = None
             self.sheet = None
             self.worksheet = None
+
+    def _load_credentials(self) -> Optional[dict]:
+        """
+        Carga las credenciales desde:
+        1. Variable de entorno GOOGLE_CREDENTIALS (Render)
+        2. Archivo local google_credentials.json (desarrollo)
+        """
+        # Intentar desde variable de entorno (Render)
+        env_creds = os.environ.get('GOOGLE_CREDENTIALS')
+        if env_creds:
+            try:
+                creds_dict = json.loads(env_creds)
+                print("✅ Credenciales cargadas desde variable de entorno")
+                return creds_dict
+            except json.JSONDecodeError as e:
+                print(f"❌ Error parsing GOOGLE_CREDENTIALS: {e}")
+                return None
+
+        # Intentar desde archivo local
+        if os.path.exists(self.credentials_source):
+            try:
+                with open(self.credentials_source, 'r') as f:
+                    creds_dict = json.load(f)
+                    print("✅ Credenciales cargadas desde archivo local")
+                    return creds_dict
+            except Exception as e:
+                print(f"❌ Error leyendo archivo {self.credentials_source}: {e}")
+                return None
+
+        print("⚠️ No se encontró GOOGLE_CREDENTIALS en variable de entorno ni archivo local")
+        return None
 
     def _setup_headers(self):
         """Configura los headers del worksheet si está vacío"""
@@ -200,10 +237,16 @@ class GoogleSheetsManager:
 # Instancia global del manager
 sheets_manager: Optional[GoogleSheetsManager] = None
 
-def init_sheets_manager(credentials_path: str = "google_credentials.json"):
-    """Inicializa el manager de Google Sheets"""
+def init_sheets_manager(credentials_source: str = "google_credentials.json"):
+    """
+    Inicializa el manager de Google Sheets
+
+    Intenta leer credenciales desde:
+    - Variable de entorno GOOGLE_CREDENTIALS (Render)
+    - Archivo credentials_source (desarrollo local)
+    """
     global sheets_manager
-    sheets_manager = GoogleSheetsManager(credentials_path)
+    sheets_manager = GoogleSheetsManager(credentials_source)
     return sheets_manager
 
 def save_to_sheets(athlete_name: str, exercise_type: str, angles: Dict,
