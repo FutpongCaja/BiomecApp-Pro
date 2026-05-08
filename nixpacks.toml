@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
+aptPkgs = ["libglib2.0-0", "libsm6", "libxext6", "libxrender1", "libgomp1"]
+
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt && pip install --force-reinstall --no-deps opencv-python-headless==4.9.0.80"
+]

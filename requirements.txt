@@ -1,0 +1,9 @@
+fastapi==0.111.0
+uvicorn==0.30.1
+mediapipe==0.10.18
+python-multipart==0.0.9
+numpy==1.26.4
+opencv-python==4.9.0.80
+gspread==5.12.0
+google-auth-oauthlib==1.2.0
+google-auth==2.27.0
