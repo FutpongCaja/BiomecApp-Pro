@@ -24,7 +24,9 @@ app.add_middleware(
 )
 
 # 📊 Inicializar Google Sheets Manager
-init_sheets_manager("google_credentials.json")
+# Esto va a leer de GOOGLE_CREDENTIALS (variable de entorno en Render)
+# o de google_credentials.json (archivo local)
+init_sheets_manager()
 
 mp_pose    = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
@@ -839,8 +841,8 @@ async def analyze_video_endpoint(
         full_name = f"{athlete_name} {athlete_lastname}".strip()
         feedback  = generate_feedback(angles, exercise_type, full_name)
 
-        # 📊 Guardar automáticamente en Google Sheets
-        save_to_sheets(full_name, exercise_type, angles, feedback)
+        # 📊 Guardar automáticamente en Google Sheets (con email)
+        save_to_sheets(full_name, exercise_type, angles, feedback, athlete_email=athlete_email)
 
         return JSONResponse({"angles": angles, "annotated_image": ann_b64, "feedback": feedback})
     except HTTPException:
@@ -875,8 +877,8 @@ async def analyze_frame_endpoint(
         full_name = f"{athlete_name} {athlete_lastname}".strip()
         feedback  = generate_feedback(angles, exercise_type, full_name)
 
-        # 📊 Guardar automáticamente en Google Sheets
-        save_to_sheets(full_name, exercise_type, angles, feedback)
+        # 📊 Guardar automáticamente en Google Sheets (con email)
+        save_to_sheets(full_name, exercise_type, angles, feedback, athlete_email=athlete_email)
 
         return JSONResponse({"angles": angles, "annotated_image": ann_b64, "feedback": feedback})
     except HTTPException:

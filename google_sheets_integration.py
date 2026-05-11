@@ -152,7 +152,8 @@ class GoogleSheetsManager:
         self.worksheet.append_row(headers)
 
     def save_analysis(self, athlete_name: str, exercise_type: str,
-                     angles: Dict, feedback: str, image_url: Optional[str] = None) -> bool:
+                     angles: Dict, feedback: str, image_url: Optional[str] = None,
+                     athlete_email: Optional[str] = None) -> bool:
         """
         Guarda un análisis en Google Sheets
 
@@ -162,6 +163,7 @@ class GoogleSheetsManager:
             angles: Diccionario con los ángulos calculados
             feedback: Texto del feedback generado
             image_url: URL de la imagen analizada (opcional)
+            athlete_email: Email del atleta (opcional)
 
         Returns:
             True si se guardó exitosamente, False si no
@@ -211,7 +213,8 @@ class GoogleSheetsManager:
                 estado_der,
                 hay_riesgo,
                 feedback_principal,
-                image_url or ""
+                image_url or "",
+                athlete_email or ""  # Agregar email del atleta
             ]
 
             # Agregar a Google Sheets
@@ -268,8 +271,9 @@ def init_sheets_manager(credentials_source: str = "google_credentials.json"):
     return sheets_manager
 
 def save_to_sheets(athlete_name: str, exercise_type: str, angles: Dict,
-                  feedback: str, image_url: Optional[str] = None) -> bool:
+                  feedback: str, image_url: Optional[str] = None,
+                  athlete_email: Optional[str] = None) -> bool:
     """Función simplificada para guardar datos"""
     if sheets_manager:
-        return sheets_manager.save_analysis(athlete_name, exercise_type, angles, feedback, image_url)
+        return sheets_manager.save_analysis(athlete_name, exercise_type, angles, feedback, image_url, athlete_email)
     return False
