@@ -191,8 +191,8 @@ class GoogleSheetsManager:
             # Detectar riesgos
             hay_riesgo = "🔴 SÍ" if any(x in feedback for x in ["riesgo", "Riesgo"]) else "✅ No"
 
-            # Primer línea del feedback
-            feedback_principal = feedback.split("\n")[0] if feedback else ""
+            # Feedback COMPLETO (no solo la primera línea)
+            feedback_principal = feedback if feedback else ""
 
             # Construir fila
             row = [
