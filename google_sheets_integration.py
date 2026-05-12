@@ -248,19 +248,27 @@ class GoogleSheetsManager:
             ]
 
             # Agregar a Google Sheets
+            # Obtener todas las filas para contar correctamente
             all_values = self.worksheet.get_all_values()
             num_rows = len(all_values)
+            next_row_index = num_rows + 1  # +1 porque gspread usa índices de 1
+
             print(f"📝 Worksheet tiene {num_rows} filas")
-            print(f"📝 Agregando fila {num_rows + 1} a Google Sheets")
+            print(f"📝 Insertando en fila {next_row_index}")
             print(f"📝 Datos a agregar: {len(row)} columnas")
 
             try:
-                self.worksheet.append_row(row)
-                self.worksheet.reload()
-                print(f"✅ Análisis de {athlete_name} guardado en Google Sheets (Fila {num_rows + 1})")
-            except Exception as append_err:
-                print(f"❌ Error en append_row(): {append_err}")
-                raise
+                # Usar insert_row() en lugar de append_row() para ser explícito sobre la fila
+                self.worksheet.insert_row(row, index=next_row_index)
+                print(f"✅ Análisis de {athlete_name} guardado en fila {next_row_index}")
+            except Exception as insert_err:
+                print(f"❌ Error en insert_row(): {insert_err}")
+                # Fallback a append_row si insert_row falla
+                try:
+                    self.worksheet.append_row(row)
+                    print(f"⚠️ Guardado con append_row() como fallback")
+                except:
+                    raise insert_err
 
             return True
 
