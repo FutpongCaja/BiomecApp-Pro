@@ -782,7 +782,10 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
         <video id="record-feed" autoplay playsinline muted style="transform: scaleX(-1);"></video>
         <div class="camera-overlay">
           <div style="font-size:20px;color:#ff4444;font-weight:bold" id="record-timer">00:00</div>
-          <button class="stop-btn" id="record-stop-btn" onclick="stopRecording()">⏹ Detener</button>
+          <div style="display:flex;gap:10px;justify-content:center">
+            <button class="capture-btn" onclick="switchCamera()" style="font-size:12px;padding:8px">🔄 Cambiar</button>
+            <button class="stop-btn" id="record-stop-btn" onclick="stopRecording()">⏹ Detener</button>
+          </div>
         </div>
       </div>
     </div>
@@ -840,6 +843,7 @@ let selectedFile     = null;
 let mediaRecorder    = null;
 let recordedChunks   = [];
 let recordStartTime  = 0;
+let facingMode       = 'user';
 let cameraStream     = null;
 let autoInterval     = null;
 let lastResult       = null;
@@ -881,7 +885,7 @@ function selectExercise(type) {
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode }, audio: false });
     const video = document.getElementById('record-feed');
     video.srcObject = stream;
 
@@ -918,6 +922,16 @@ function updateRecordTimer() {
   document.getElementById('record-timer').textContent =
     (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
   setTimeout(updateRecordTimer, 100);
+}
+
+function switchCamera() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    const stream = document.getElementById('record-feed').srcObject;
+    stream.getTracks().forEach(track => track.stop());
+
+    facingMode = facingMode === 'user' ? 'environment' : 'user';
+    startRecording();
+  }
 }
 
 function stopRecording() {
