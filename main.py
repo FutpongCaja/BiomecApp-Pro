@@ -229,6 +229,9 @@ def draw_jump_analysis(frame, metrics, jump_type):
     Dibuja análisis de salto en el frame
     Muestra altura, tiempo de vuelo, simetría
     """
+    if frame is None or metrics is None:
+        return frame if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
+
     annotated = frame.copy()
     h, w = frame.shape[:2]
 
@@ -247,16 +250,15 @@ def draw_jump_analysis(frame, metrics, jump_type):
     cv2.putText(annotated, title, (20, y_offset), font, 0.9, color_text, 2)
 
     # Métricas
-    if metrics:
-        altura = metrics.get("altura_salto_cm", 0)
-        tiempo = metrics.get("tiempo_vuelo_ms", 0)
-        simetria = metrics.get("simetria_piernas", 0)
-        potencia = metrics.get("indice_potencia", 0)
+    altura = metrics.get("altura_salto_cm", 0)
+    tiempo_vuelo_ms = metrics.get("tiempo_vuelo_ms", 0)
+    simetria = metrics.get("simetria_piernas", 0)
+    potencia = metrics.get("indice_potencia", 0)
 
-        cv2.putText(annotated, f"Altura: {altura} cm", (20, y_offset + line_height), font, scale, color_text, 1)
-        cv2.putText(annotated, f"Tiempo vuelo: {tiempo} ms", (w//2, y_offset + line_height), font, scale, color_text, 1)
-        cv2.putText(annotated, f"Simetría: {simetria}°", (20, y_offset + line_height*2), font, scale, color_text, 1)
-        cv2.putText(annotated, f"Potencia: {potencia}/100", (w//2, y_offset + line_height*2), font, scale, color_text, 1)
+    cv2.putText(annotated, f"Altura: {altura} cm", (20, y_offset + line_height), font, scale, color_text, 1)
+    cv2.putText(annotated, f"Tiempo vuelo: {tiempo_vuelo_ms} ms", (w//2, y_offset + line_height), font, scale, color_text, 1)
+    cv2.putText(annotated, f"Simetría: {simetria}°", (20, y_offset + line_height*2), font, scale, color_text, 1)
+    cv2.putText(annotated, f"Potencia: {potencia}/100", (w//2, y_offset + line_height*2), font, scale, color_text, 1)
 
     return annotated
 
