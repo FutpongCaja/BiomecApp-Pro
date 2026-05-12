@@ -153,7 +153,6 @@ class GoogleSheetsManager:
             "Altura Salto (cm)",
             "Tiempo Vuelo (ms)",
             "Simetría Piernas (°)",
-            "Índice Potencia",
             "Tipo de Análisis"
         ]
         self.worksheet.append_row(headers)
@@ -192,7 +191,6 @@ class GoogleSheetsManager:
                 altura_salto = angles.get("altura_salto_cm", "")
                 tiempo_vuelo = angles.get("tiempo_vuelo_ms", "")
                 simetria_piernas = angles.get("simetria_piernas", "")
-                indice_potencia = angles.get("indice_potencia", "")
                 tipo_analisis = "Salto"
 
                 # Para saltos, dejar vacías las columnas de biomecánica
@@ -214,7 +212,7 @@ class GoogleSheetsManager:
                 estado_der = self._get_status(rodilla_der, exercise_type, "der")
 
                 # Para biomecánica, dejar vacías las columnas de saltos
-                altura_salto = tiempo_vuelo = simetria_piernas = indice_potencia = ""
+                altura_salto = tiempo_vuelo = simetria_piernas = ""
                 tipo_analisis = "Biomecánica"
 
             # Detectar riesgos
@@ -246,7 +244,6 @@ class GoogleSheetsManager:
                 str(altura_salto) if altura_salto else "",
                 str(tiempo_vuelo) if tiempo_vuelo else "",
                 str(simetria_piernas) if simetria_piernas else "",
-                str(indice_potencia) if indice_potencia else "",
                 tipo_analisis
             ]
 

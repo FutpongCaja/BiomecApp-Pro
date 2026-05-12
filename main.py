@@ -204,21 +204,10 @@ def calculate_jump_metrics(jump_data, jump_type):
     # Simetría promedio
     simetria = (jump_data['simetria_despegue'] + jump_data['simetria_aterrizaje']) / 2
 
-    # Potencia (basada en velocidad de extensión)
-    vel_max = max(jump_data['velocidades']) if jump_data['velocidades'] else 0.1
-    potencia = min(100, int(vel_max * 1000))  # Índice 0-100
-
-    # Contacto con suelo
-    tiempo_contacto = jump_data['despegue']
-    tiempo_recuperacion = len(jump_data['hip_trajectory']) - jump_data['aterrizaje']
-
     angles = {
         "altura_salto_cm": altura_cm,
         "tiempo_vuelo_ms": tiempo_vuelo_ms,
-        "simetria_piernas": round(simetria, 1),
-        "indice_potencia": potencia,
-        "tiempo_contacto_preparacion": tiempo_contacto,
-        "tiempo_recuperacion": tiempo_recuperacion
+        "simetria_piernas": round(simetria, 1)
     }
 
     return angles
@@ -253,12 +242,10 @@ def draw_jump_analysis(frame, metrics, jump_type):
     altura = metrics.get("altura_salto_cm", 0)
     tiempo_vuelo_ms = metrics.get("tiempo_vuelo_ms", 0)
     simetria = metrics.get("simetria_piernas", 0)
-    potencia = metrics.get("indice_potencia", 0)
 
     cv2.putText(annotated, f"Altura: {altura} cm", (20, y_offset + line_height), font, scale, color_text, 1)
     cv2.putText(annotated, f"Tiempo vuelo: {tiempo_vuelo_ms} ms", (w//2, y_offset + line_height), font, scale, color_text, 1)
     cv2.putText(annotated, f"Simetría: {simetria}°", (20, y_offset + line_height*2), font, scale, color_text, 1)
-    cv2.putText(annotated, f"Potencia: {potencia}/100", (w//2, y_offset + line_height*2), font, scale, color_text, 1)
 
     return annotated
 
@@ -435,7 +422,6 @@ def generate_feedback(angles, exercise_type, athlete_name=""):
         altura = angles.get("altura_salto_cm", 0)
         tiempo_vuelo = angles.get("tiempo_vuelo_ms", 0)
         simetria = angles.get("simetria_piernas", 0)
-        potencia = angles.get("indice_potencia", 0)
 
         title = "Salto Vertical" if exercise_type == "salto_vertical" else "Salto Horizontal"
 
@@ -462,14 +448,6 @@ def generate_feedback(angles, exercise_type, athlete_name=""):
         else:
             riesg.append(f"Asimetría significativa ({simetria}°) — riesgo de lesión.")
             ejer.append("Prensa unilateral y sentadilla búlgara para equilibrar la fuerza.")
-
-        # Evaluación de potencia
-        if potencia < 30:
-            riesg.append(f"Baja potencia ({potencia}/100) — falta explosividad en el despegue.")
-        elif potencia < 60:
-            corr.append(f"Potencia media ({potencia}/100) — mejora es posible.")
-        else:
-            bien.append(f"Excelente potencia ({potencia}/100) — gran velocidad de extensión.")
 
         # Tiempo de vuelo
         tiempo_vuelo_sec = tiempo_vuelo / 1000
@@ -1044,7 +1022,7 @@ const LABELS = {
   tobillo_izq:'Tibia Izq (incl.)', tobillo_der:'Tibia Der (incl.)',
   simetria_rodillas:'Simetría', inclinacion_tronco:'Tronco',
   altura_salto_cm:'Altura (cm)', tiempo_vuelo_ms:'Tiempo vuelo (ms)',
-  simetria_piernas:'Simetría (°)', indice_potencia:'Potencia'
+  simetria_piernas:'Simetría (°)'
 };
 const RANGES = {
   rodilla_izq:{ok:[70,100],warn:[60,120]}, rodilla_der:{ok:[70,100],warn:[60,120]},
@@ -1052,7 +1030,7 @@ const RANGES = {
   tobillo_izq:{ok:[0,32],warn:[0,40]},   tobillo_der:{ok:[0,32],warn:[0,40]},
   simetria_rodillas:{ok:[0,5],warn:[0,10]},inclinacion_tronco:{ok:[0,15],warn:[0,25]},
   altura_salto_cm:{ok:[40,100],warn:[20,120]}, tiempo_vuelo_ms:{ok:[400,1000],warn:[200,1200]},
-  simetria_piernas:{ok:[0,10],warn:[0,20]}, indice_potencia:{ok:[60,100],warn:[30,100]}
+  simetria_piernas:{ok:[0,10],warn:[0,20]}
 };
 
 function showResults(data) {
@@ -1073,7 +1051,6 @@ function showResults(data) {
     let symbol = '°';
     if (k === 'altura_salto_cm') symbol = 'cm';
     else if (k === 'tiempo_vuelo_ms') symbol = 'ms';
-    else if (k === 'indice_potencia') symbol = '/100';
 
     grid.innerHTML += `<div class="angle-card">
       <div class="label">${LABELS[k]||k}</div>
