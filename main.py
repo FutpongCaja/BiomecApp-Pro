@@ -743,6 +743,7 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
 
   <div class="tabs">
     <button class="tab-btn active" id="tab-upload-btn" onclick="switchTab('upload')">📤 Subir Video</button>
+    <button class="tab-btn" id="tab-record-btn" onclick="switchTab('record')">📹 Grabar Video</button>
     <button class="tab-btn" id="tab-camera-btn" onclick="switchTab('camera')">📸 Cámara en Vivo</button>
   </div>
 
@@ -765,6 +766,25 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
       <span style="font-size:28px" id="upload-icon">🎥</span>
       <div><div class="file-name" id="file-name-display"></div>
            <div class="file-size" id="file-size-display"></div></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-record">
+    <div id="record-start-area">
+      <button class="start-camera-btn" onclick="startRecording()">📹 Iniciar Grabación</button>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center">
+        <p>Toca para empezar a grabar</p>
+        <p>Toca de nuevo para finalizar</p>
+      </div>
+    </div>
+    <div id="record-active" style="display:none">
+      <div class="camera-container">
+        <video id="record-feed" autoplay playsinline muted style="transform: scaleX(-1);"></video>
+        <div class="camera-overlay">
+          <div style="font-size:20px;color:#ff4444;font-weight:bold" id="record-timer">00:00</div>
+          <button class="stop-btn" id="record-stop-btn" onclick="stopRecording()">⏹ Detener</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -817,6 +837,9 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
 let selectedMode     = 'biomecania';
 let selectedExercise = 'sentadilla';
 let selectedFile     = null;
+let mediaRecorder    = null;
+let recordedChunks   = [];
+let recordStartTime  = 0;
 let cameraStream     = null;
 let autoInterval     = null;
 let lastResult       = null;
@@ -852,6 +875,84 @@ function selectExercise(type) {
   selectedExercise = type;
   document.querySelectorAll('.exercise-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('btn-' + type).classList.add('active');
+}
+
+// ─── GRABAR VIDEO ───────────────────────────────────────────────────────────
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    const video = document.getElementById('record-feed');
+    video.srcObject = stream;
+
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      uploadRecordedVideo(blob);
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.start();
+    recordStartTime = Date.now();
+
+    document.getElementById('record-start-area').style.display = 'none';
+    document.getElementById('record-active').style.display = 'block';
+    updateRecordTimer();
+
+  } catch (err) {
+    alert('No se pudo acceder a la cámara: ' + err.message);
+  }
+}
+
+function updateRecordTimer() {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+  const min = Math.floor(elapsed / 60);
+  const sec = elapsed % 60;
+  document.getElementById('record-timer').textContent =
+    (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+  setTimeout(updateRecordTimer, 100);
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    document.getElementById('record-active').style.display = 'none';
+    document.getElementById('record-start-area').style.display = 'block';
+    document.getElementById('loading').style.display = 'flex';
+  }
+}
+
+async function uploadRecordedVideo(blob) {
+  try {
+    const formData = new FormData();
+    formData.append('video', blob, 'recorded_video.webm');
+    formData.append('exercise_type', selectedExercise);
+    formData.append('athlete_name', athlete.nombre);
+    formData.append('athlete_lastname', athlete.apellido);
+    formData.append('athlete_email', athlete.email);
+
+    const res = await fetch('/analyze-video', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (res.ok) {
+      showResults(data);
+    } else {
+      document.getElementById('error-box').textContent = 'Error: ' + (data.detail || 'Análisis fallido');
+      document.getElementById('error-box').style.display = 'block';
+    }
+  } catch (err) {
+    document.getElementById('error-box').textContent = 'Error: ' + err.message;
+    document.getElementById('error-box').style.display = 'block';
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
 }
 
 function switchTab(tab) {
@@ -1036,7 +1137,46 @@ function showResults(data) {
   }
   document.getElementById('feedback-text').textContent = data.feedback;
   document.getElementById('results').style.display = 'block';
+
+  // SI ES SALTO, CARGAR ESTADO
+  if (selectedMode === 'saltos' && data.angles.altura_salto_cm) {
+    loadJumpStatus(athlete.nombre, data.angles.altura_salto_cm);
+  }
+
   document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+async function loadJumpStatus(nombre, altura) {
+  try {
+    const res = await fetch(`/jump-status/${encodeURIComponent(nombre)}/${altura}`);
+    const status = await res.json();
+
+    let colorSemaforo = 'gray';
+    if (status.estado === 'ÓPTIMO') colorSemaforo = 'green';
+    else if (status.estado === 'NORMAL') colorSemaforo = 'yellow';
+    else if (status.estado === 'BAJO') colorSemaforo = 'red';
+
+    const statusHtml = `
+      <div style="margin-top: 20px; padding: 20px; background: #1a1a2e; border-radius: 8px; border-left: 4px solid ${colorSemaforo};">
+        <div style="text-align: center;">
+          <div style="font-size: 14px; color: #888; margin-bottom: 10px; text-transform: uppercase;">ESTADO NEUROMUSCULAR</div>
+          <div style="font-size: 32px; font-weight: bold; color: ${colorSemaforo}; margin-bottom: 15px;">${status.estado}</div>
+          <div style="display: inline-block; width: 60px; height: 60px; border-radius: 50%; background-color: ${colorSemaforo}; margin-bottom: 15px;"></div>
+        </div>
+        <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+          <div style="font-size: 12px; color: #aaa; margin-bottom: 5px;">Altura actual: <span style="color: #fff; font-weight: bold;">${status.altura_actual} cm</span></div>
+          <div style="font-size: 12px; color: #aaa; margin-bottom: 5px;">Promedio (3 mejores): <span style="color: #fff; font-weight: bold;">${status.promedio} cm</span></div>
+          <div style="font-size: 14px; color: ${status.diferencia_pct >= 0 ? 'lime' : 'orange'}; font-weight: bold;">
+            ${status.diferencia_pct >= 0 ? '+' : ''}${status.diferencia_pct}%
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('feedback-text').insertAdjacentHTML('afterend', statusHtml);
+  } catch (e) {
+    console.log('No hay histórico aún');
+  }
 }
 
 async function downloadPDF() {
@@ -1222,6 +1362,38 @@ async def analyze_frame_endpoint(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/jump-status/{athlete_name}/{altura}")
+async def get_jump_status(athlete_name: str, altura: float):
+    """Obtiene estado del salto comparando con histórico del atleta"""
+    from google_sheets_integration import sheets_manager
+
+    if not sheets_manager:
+        return JSONResponse({"error": "Google Sheets no conectado"})
+
+    history = sheets_manager.get_jump_history(athlete_name)
+    if not history:
+        return JSONResponse({"status": "INICIAL", "promedio": altura, "diferencia_pct": 0, "estado": "PRIMER SALTO"})
+
+    promedio = history["promedio"]
+    diferencia = altura - promedio
+    diferencia_pct = (diferencia / promedio * 100) if promedio > 0 else 0
+
+    if diferencia_pct >= 5:
+        estado = "ÓPTIMO"
+    elif diferencia_pct >= -5:
+        estado = "NORMAL"
+    else:
+        estado = "BAJO"
+
+    return JSONResponse({
+        "estado": estado,
+        "altura_actual": round(altura, 1),
+        "promedio": round(promedio, 1),
+        "diferencia_pct": round(diferencia_pct, 1),
+        "mejores_3": [round(x, 1) for x in history["mejores_3"]]
+    })
 
 
 if __name__ == "__main__":
