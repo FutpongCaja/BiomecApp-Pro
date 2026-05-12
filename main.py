@@ -46,6 +46,221 @@ def get_pt(landmarks, landmark_id, w, h):
     return [lm.x * w, lm.y * h]
 
 
+# ─── JUMP ANALYSIS (Phase 2) ───────────────────────────────────────────────
+
+def analyze_jump_video(video_path, jump_type):
+    """
+    Analiza TODO el video frame a frame para detectar salto
+    Calcula: altura, tiempo de vuelo, simetría, potencia
+    """
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+
+    hip_positions_l = []
+    hip_positions_r = []
+    ankle_positions_l = []
+    ankle_positions_r = []
+    frame_count = 0
+    best_frame = None
+    best_frame_idx = 0
+
+    with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            h, w = frame.shape[:2]
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(image_rgb)
+
+            if results.pose_landmarks:
+                lm = results.pose_landmarks.landmark
+                L = mp_pose.PoseLandmark
+
+                # Obtener posiciones Y de caderas y tobillos (eje vertical)
+                l_hip_y = lm[L.LEFT_HIP.value].y * h
+                r_hip_y = lm[L.RIGHT_HIP.value].y * h
+                l_ankle_y = lm[L.LEFT_ANKLE.value].y * h
+                r_ankle_y = lm[L.RIGHT_ANKLE.value].y * h
+
+                hip_positions_l.append(l_hip_y)
+                hip_positions_r.append(r_hip_y)
+                ankle_positions_l.append(l_ankle_y)
+                ankle_positions_r.append(r_ankle_y)
+
+                # Guardar frame en pico máximo (máxima altura de cadera)
+                avg_hip = (l_hip_y + r_hip_y) / 2
+                if frame_count == 0 or avg_hip < hip_positions_l[best_frame_idx]:
+                    best_frame = frame.copy()
+                    best_frame_idx = len(hip_positions_l) - 1
+
+            frame_count += 1
+
+    cap.release()
+
+    if not hip_positions_l:
+        return None, None, None
+
+    # Detectar fases del salto
+    jump_data = detect_jump_phases(hip_positions_l, hip_positions_r, ankle_positions_l, ankle_positions_r, fps)
+
+    # Calcular métricas
+    metrics = calculate_jump_metrics(jump_data, jump_type)
+
+    # Dibujar anotaciones en el best frame
+    if best_frame is not None:
+        annotated = draw_jump_analysis(best_frame, metrics, jump_type)
+    else:
+        annotated = frame if 'frame' in locals() else None
+
+    return metrics, annotated, jump_data
+
+
+def detect_jump_phases(hip_l, hip_r, ankle_l, ankle_r, fps):
+    """
+    Detecta las fases del salto analizando posiciones de caderas y tobillos
+    Retorna: despegue_frame, aterrizaje_frame, altura_máxima, etc.
+    """
+    hip_avg = [(hip_l[i] + hip_r[i]) / 2 for i in range(len(hip_l))]
+    ankle_avg = [(ankle_l[i] + ankle_r[i]) / 2 for i in range(len(ankle_l))]
+
+    # Normalizar posiciones (0-1)
+    h_min, h_max = min(hip_avg), max(hip_avg)
+    hip_norm = [(h - h_min) / (h_max - h_min + 0.001) for h in hip_avg]
+
+    # Detectar cambios en velocidad vertical (derivada)
+    velocidades = [0]
+    for i in range(1, len(hip_norm)):
+        vel = hip_norm[i] - hip_norm[i-1]
+        velocidades.append(vel)
+
+    # Encontrar puntos clave
+    # Descenso: velocidad positiva (baja)
+    # Despegue: cambio de baja a subida (máximo en diferencia negativa)
+    # Vuelo: velocidad negativa pero caderas suben
+    # Aterrizaje: caderas bajan y se estabilizan
+
+    despegue = None
+    aterrizaje = None
+    min_hip = min(hip_norm)
+    max_hip = max(hip_norm)
+
+    for i in range(1, len(hip_norm) - 1):
+        # Despegue: caderas suben rápido (velocidad cambia de positiva a negativa)
+        if velocidades[i-1] > 0 and velocidades[i] < -0.01 and despegue is None:
+            despegue = i
+
+        # Aterrizaje: después de despegue, caderas bajan y se estabilizan
+        if despegue is not None and i > despegue + 5:
+            if velocidades[i] > -0.005 and hip_norm[i] < min_hip + 0.1:
+                aterrizaje = i
+                break
+
+    # Si no detectó bien, estimar
+    if despegue is None:
+        despegue = len(hip_norm) // 3
+    if aterrizaje is None:
+        aterrizaje = len(hip_norm) - 5
+
+    tiempo_vuelo = (aterrizaje - despegue) / fps
+    altura_max = max(hip_norm[despegue:min(aterrizaje+1, len(hip_norm))])
+    altura_inicial = hip_norm[0]
+    altura_relativa = (altura_max - altura_inicial) * (h_max - h_min) / 100  # En píxeles relativos
+
+    # Calcular simetría de piernas
+    simetria_despegue = abs(hip_l[despegue] - hip_r[despegue]) if despegue < len(hip_l) else 0
+    simetria_aterrizaje = abs(hip_l[aterrizaje] - hip_r[aterrizaje]) if aterrizaje < len(hip_l) else 0
+
+    return {
+        'despegue': despegue,
+        'aterrizaje': aterrizaje,
+        'tiempo_vuelo': tiempo_vuelo,
+        'altura_relativa': altura_relativa,
+        'simetria_despegue': simetria_despegue,
+        'simetria_aterrizaje': simetria_aterrizaje,
+        'hip_trajectory': hip_avg,
+        'velocidades': velocidades
+    }
+
+
+def calculate_jump_metrics(jump_data, jump_type):
+    """
+    Calcula métricas finales del salto
+    altura (cm), tiempo de vuelo (ms), simetría (°), potencia (índice)
+    """
+    if not jump_data:
+        return {}
+
+    # Usar fórmula: h = g * t² / 8  (donde g=9.8 m/s², h en cm, t en segundos)
+    tiempo_vuelo = jump_data['tiempo_vuelo']
+    altura_cm = max(5, int(9.8 * (tiempo_vuelo ** 2) / 8 * 100))  # Mínimo 5cm
+
+    # Si es muy alto, capear a valores realistas (máx ~1.5m para humanos)
+    altura_cm = min(altura_cm, 150)
+
+    tiempo_vuelo_ms = int(tiempo_vuelo * 1000)
+
+    # Simetría promedio
+    simetria = (jump_data['simetria_despegue'] + jump_data['simetria_aterrizaje']) / 2
+
+    # Potencia (basada en velocidad de extensión)
+    vel_max = max(jump_data['velocidades']) if jump_data['velocidades'] else 0.1
+    potencia = min(100, int(vel_max * 1000))  # Índice 0-100
+
+    # Contacto con suelo
+    tiempo_contacto = jump_data['despegue']
+    tiempo_recuperacion = len(jump_data['hip_trajectory']) - jump_data['aterrizaje']
+
+    angles = {
+        "altura_salto_cm": altura_cm,
+        "tiempo_vuelo_ms": tiempo_vuelo_ms,
+        "simetria_piernas": round(simetria, 1),
+        "indice_potencia": potencia,
+        "tiempo_contacto_preparacion": tiempo_contacto,
+        "tiempo_recuperacion": tiempo_recuperacion
+    }
+
+    return angles
+
+
+def draw_jump_analysis(frame, metrics, jump_type):
+    """
+    Dibuja análisis de salto en el frame
+    Muestra altura, tiempo de vuelo, simetría
+    """
+    annotated = frame.copy()
+    h, w = frame.shape[:2]
+
+    # Fondo oscuro en la parte superior
+    cv2.rectangle(annotated, (0, 0), (w, 120), (10, 14, 26), -1)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.7
+    color_text = (0, 212, 255)  # Cyan
+
+    y_offset = 25
+    line_height = 25
+
+    # Título
+    title = "SALTO VERTICAL" if jump_type == "salto_vertical" else "SALTO HORIZONTAL"
+    cv2.putText(annotated, title, (20, y_offset), font, 0.9, color_text, 2)
+
+    # Métricas
+    if metrics:
+        altura = metrics.get("altura_salto_cm", 0)
+        tiempo = metrics.get("tiempo_vuelo_ms", 0)
+        simetria = metrics.get("simetria_piernas", 0)
+        potencia = metrics.get("indice_potencia", 0)
+
+        cv2.putText(annotated, f"Altura: {altura} cm", (20, y_offset + line_height), font, scale, color_text, 1)
+        cv2.putText(annotated, f"Tiempo vuelo: {tiempo} ms", (w//2, y_offset + line_height), font, scale, color_text, 1)
+        cv2.putText(annotated, f"Simetría: {simetria}°", (20, y_offset + line_height*2), font, scale, color_text, 1)
+        cv2.putText(annotated, f"Potencia: {potencia}/100", (w//2, y_offset + line_height*2), font, scale, color_text, 1)
+
+    return annotated
+
+
 # ─── POSE ANALYSIS ──────────────────────────────────────────────────────────
 
 def analyze_frame(image_bgr, exercise_type):
@@ -213,10 +428,74 @@ def generate_feedback(angles, exercise_type, athlete_name=""):
     ejer  = []
     name_str = f"{athlete_name}, " if athlete_name else ""
 
-    # Análisis de saltos (Fase 2)
+    # 🚀 ANÁLISIS DE SALTOS (Phase 2 - IMPLEMENTADO)
     if exercise_type in ["salto_vertical", "salto_horizontal"]:
+        altura = angles.get("altura_salto_cm", 0)
+        tiempo_vuelo = angles.get("tiempo_vuelo_ms", 0)
+        simetria = angles.get("simetria_piernas", 0)
+        potencia = angles.get("indice_potencia", 0)
+
         title = "Salto Vertical" if exercise_type == "salto_vertical" else "Salto Horizontal"
-        return f"Análisis de {title}:\n\n🚀 Análisis de saltos en desarrollo\n\nEsta funcionalidad está siendo mejorada para proporcionarte un análisis más detallado de:\n• Altura y potencia del salto\n• Simetría de las extremidades\n• Fase de despegue y aterrizaje\n• Recomendaciones personalizadas para mejorar tu saltabilidad\n\nEstará disponible muy pronto. ¡Gracias por tu paciencia!"
+
+        # Evaluación de altura
+        if altura < 20:
+            riesg.append(f"Altura del salto muy baja ({altura} cm) — falta potencia en las piernas.")
+            ejer.append("Sentadillas profundas con pausa en cajón para desarrollar fuerza explosiva.")
+        elif altura < 40:
+            corr.append(f"Altura del salto de {altura} cm — hay margen para mejorar.")
+            ejer.append("Ejercicios pliométricos: saltos en caja, saltos con sentadilla.")
+        elif altura < 60:
+            bien.append(f"Altura del salto buena ({altura} cm) — excelente explosividad.")
+            ejer.append("Mantén el entrenamiento de potencia con sentadillas y peso muerto.")
+        else:
+            bien.append(f"¡ALTURA EXCEPCIONAL! {altura} cm — eres un saltador de élite.")
+            ejer.append("Continúa con entrenamiento avanzado de potencia y velocidad.")
+
+        # Evaluación de simetría
+        if simetria < 5:
+            bien.append(f"Perfecta simetría bilateral ({simetria}°) — ambas piernas trabajan igual.")
+        elif simetria < 15:
+            corr.append(f"Leve asimetría ({simetria}°) — el lado {('izquierdo' if simetria > 7 else 'derecho')} es más fuerte.")
+            ejer.append("Ejercicios unilaterales: sentadilla búlgara, peso muerto con una pierna.")
+        else:
+            riesg.append(f"Asimetría significativa ({simetria}°) — riesgo de lesión.")
+            ejer.append("Prensa unilateral y sentadilla búlgara para equilibrar la fuerza.")
+
+        # Evaluación de potencia
+        if potencia < 30:
+            riesg.append(f"Baja potencia ({potencia}/100) — falta explosividad en el despegue.")
+        elif potencia < 60:
+            corr.append(f"Potencia media ({potencia}/100) — mejora es posible.")
+        else:
+            bien.append(f"Excelente potencia ({potencia}/100) — gran velocidad de extensión.")
+
+        # Tiempo de vuelo
+        tiempo_vuelo_sec = tiempo_vuelo / 1000
+        bien.append(f"Tiempo de vuelo: {tiempo_vuelo_ms} ms ({tiempo_vuelo_sec:.2f}s)")
+
+        # Recomendaciones generales
+        if not ejer or len(ejer) == 1:
+            if exercise_type == "salto_vertical":
+                ejer.append("Entrena 2-3 veces por semana saltos con progresión: sentadilla, sentadilla con salto, saltos múltiples.")
+            else:
+                ejer.append("Mejora flexibilidad de tobillos y trabaja potencia lateral con saltos laterales y sentadillas laterales.")
+
+        lines = []
+        if bien:
+            lines.append("✅ Lo que está bien:")
+            lines += [f"  • {x}" for x in bien]
+        if corr:
+            lines.append("\n⚠️ Qué mejorar:")
+            lines += [f"  • {x}" for x in corr]
+        if riesg:
+            lines.append("\n🔴 Riesgo de lesión:")
+            lines += [f"  • {x}" for x in riesg]
+        if ejer:
+            lines.append("\n💪 Plan de entrenamiento:")
+            lines += [f"  • {x}" for x in ejer]
+
+        prefix = f"Análisis de {title} - {name_str}:\n\n" if name_str else f"Análisis de {title}:\n\n"
+        return prefix + "\n".join(lines)
 
     if exercise_type == "sentadilla":
         rod_izq = angles.get("rodilla_izq", 0)
@@ -761,13 +1040,17 @@ const LABELS = {
   rodilla_izq:'Rodilla Izq', rodilla_der:'Rodilla Der',
   cadera_izq:'Cadera Izq',   cadera_der:'Cadera Der',
   tobillo_izq:'Tibia Izq (incl.)', tobillo_der:'Tibia Der (incl.)',
-  simetria_rodillas:'Simetría', inclinacion_tronco:'Tronco'
+  simetria_rodillas:'Simetría', inclinacion_tronco:'Tronco',
+  altura_salto_cm:'Altura (cm)', tiempo_vuelo_ms:'Tiempo vuelo (ms)',
+  simetria_piernas:'Simetría (°)', indice_potencia:'Potencia'
 };
 const RANGES = {
   rodilla_izq:{ok:[70,100],warn:[60,120]}, rodilla_der:{ok:[70,100],warn:[60,120]},
   cadera_izq:{ok:[60,100],warn:[45,120]},  cadera_der:{ok:[60,100],warn:[45,120]},
   tobillo_izq:{ok:[0,32],warn:[0,40]},   tobillo_der:{ok:[0,32],warn:[0,40]},
-  simetria_rodillas:{ok:[0,5],warn:[0,10]},inclinacion_tronco:{ok:[0,15],warn:[0,25]}
+  simetria_rodillas:{ok:[0,5],warn:[0,10]},inclinacion_tronco:{ok:[0,15],warn:[0,25]},
+  altura_salto_cm:{ok:[40,100],warn:[20,120]}, tiempo_vuelo_ms:{ok:[400,1000],warn:[200,1200]},
+  simetria_piernas:{ok:[0,10],warn:[0,20]}, indice_potencia:{ok:[60,100],warn:[30,100]}
 };
 
 function showResults(data) {
@@ -784,9 +1067,15 @@ function showResults(data) {
         txt = cls === 'status-bad' ? '🔴 Revisar' : '⚠️ Ajustar';
       }
     }
+    // Determinar símbolo de unidad (no todos tienen grados)
+    let symbol = '°';
+    if (k === 'altura_salto_cm') symbol = 'cm';
+    else if (k === 'tiempo_vuelo_ms') symbol = 'ms';
+    else if (k === 'indice_potencia') symbol = '/100';
+
     grid.innerHTML += `<div class="angle-card">
       <div class="label">${LABELS[k]||k}</div>
-      <div class="value">${v}°</div>
+      <div class="value">${v}${symbol}</div>
       <div class="status ${cls}">${txt}</div>
     </div>`;
   }
@@ -900,21 +1189,32 @@ async def analyze_video_endpoint(
             tmp.write(await video.read())
             tmp_path = tmp.name
 
-        key_frame = extract_key_frame(tmp_path, exercise_type)
+        full_name = f"{athlete_name} {athlete_lastname}".strip()
+
+        # 🚀 JUMP ANALYSIS (Phase 2)
+        if exercise_type in ["salto_vertical", "salto_horizontal"]:
+            angles, annotated, jump_data = analyze_jump_video(tmp_path, exercise_type)
+            if angles is None:
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=400, detail="No se pudo procesar el video. Asegurate de que el cuerpo entero sea visible durante el salto.")
+        else:
+            # BIOMECHANICS (existing)
+            key_frame = extract_key_frame(tmp_path, exercise_type)
+            if key_frame is None:
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=400, detail="No se pudo procesar el video. El cuerpo debe ser visible en su totalidad.")
+
+            angles, annotated = analyze_frame(key_frame, exercise_type)
+            if angles is None:
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=400, detail="No se detectó ninguna persona en el video.")
+
         os.unlink(tmp_path)
-
-        if key_frame is None:
-            raise HTTPException(status_code=400, detail="No se pudo procesar el video. El cuerpo debe ser visible en su totalidad.")
-
-        angles, annotated = analyze_frame(key_frame, exercise_type)
-        if angles is None:
-            raise HTTPException(status_code=400, detail="No se detectó ninguna persona en el video.")
 
         _, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
         ann_b64 = base64.b64encode(buf).decode()
 
-        full_name = f"{athlete_name} {athlete_lastname}".strip()
-        feedback  = generate_feedback(angles, exercise_type, full_name)
+        feedback = generate_feedback(angles, exercise_type, full_name)
 
         # 📊 Guardar automáticamente en Google Sheets (con email)
         save_to_sheets(full_name, exercise_type, angles, feedback, athlete_email=athlete_email)
@@ -942,6 +1242,9 @@ async def analyze_frame_endpoint(
         if image is None:
             raise HTTPException(status_code=400, detail="No se pudo decodificar la imagen.")
 
+        # Para saltos desde foto/cámara en vivo, mostrar advertencia pero permitir análisis de postura
+        is_jump = exercise_type in ["salto_vertical", "salto_horizontal"]
+
         angles, annotated = analyze_frame(image, exercise_type)
         if angles is None:
             raise HTTPException(status_code=400, detail="No se detectó ninguna persona. Asegurate de que el cuerpo entero sea visible.")
@@ -950,7 +1253,11 @@ async def analyze_frame_endpoint(
         ann_b64 = base64.b64encode(buf).decode()
 
         full_name = f"{athlete_name} {athlete_lastname}".strip()
-        feedback  = generate_feedback(angles, exercise_type, full_name)
+
+        # Para saltos desde foto, agregar nota en feedback
+        feedback = generate_feedback(angles, exercise_type, full_name)
+        if is_jump:
+            feedback += "\n\n⚠️ NOTA: Esta es una foto estática. Para un análisis completo de altura, tiempo de vuelo y potencia, sube un VIDEO del salto completo."
 
         # 📊 Guardar automáticamente en Google Sheets (con email)
         save_to_sheets(full_name, exercise_type, angles, feedback, athlete_email=athlete_email)

@@ -147,7 +147,14 @@ class GoogleSheetsManager:
             "Estado Rodilla Der",
             "Riesgo Detectado",
             "Feedback Principal",
-            "URL Imagen Análisis"
+            "URL Imagen Análisis",
+            "Email Atleta",
+            # Columnas para Saltos (Phase 2)
+            "Altura Salto (cm)",
+            "Tiempo Vuelo (ms)",
+            "Simetría Piernas (°)",
+            "Índice Potencia",
+            "Tipo de Análisis"
         ]
         self.worksheet.append_row(headers)
 
@@ -176,19 +183,39 @@ class GoogleSheetsManager:
             # Preparar datos
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Extraer ángulos
-            rodilla_izq = angles.get("rodilla_izq", "")
-            rodilla_der = angles.get("rodilla_der", "")
-            simetria = angles.get("simetria_rodillas", "")
-            cadera_izq = angles.get("cadera_izq", "")
-            cadera_der = angles.get("cadera_der", "")
-            tobillo_izq = angles.get("tobillo_izq", "")
-            tobillo_der = angles.get("tobillo_der", "")
-            inclinacion_tronco = angles.get("inclinacion_tronco", "")
+            # Detectar si es análisis de salto o biomecánica
+            is_jump = exercise_type in ["salto_vertical", "salto_horizontal"]
 
-            # Determinar estados
-            estado_izq = self._get_status(rodilla_izq, exercise_type, "izq")
-            estado_der = self._get_status(rodilla_der, exercise_type, "der")
+            # Extraer ángulos/métricas según el tipo
+            if is_jump:
+                # Métricas de salto (Phase 2)
+                altura_salto = angles.get("altura_salto_cm", "")
+                tiempo_vuelo = angles.get("tiempo_vuelo_ms", "")
+                simetria_piernas = angles.get("simetria_piernas", "")
+                indice_potencia = angles.get("indice_potencia", "")
+                tipo_analisis = "Salto"
+
+                # Para saltos, dejar vacías las columnas de biomecánica
+                rodilla_izq = rodilla_der = simetria = cadera_izq = cadera_der = tobillo_izq = tobillo_der = inclinacion_tronco = ""
+                estado_izq = estado_der = ""
+            else:
+                # Ángulos de biomecánica (sentadilla, peso muerto)
+                rodilla_izq = angles.get("rodilla_izq", "")
+                rodilla_der = angles.get("rodilla_der", "")
+                simetria = angles.get("simetria_rodillas", "")
+                cadera_izq = angles.get("cadera_izq", "")
+                cadera_der = angles.get("cadera_der", "")
+                tobillo_izq = angles.get("tobillo_izq", "")
+                tobillo_der = angles.get("tobillo_der", "")
+                inclinacion_tronco = angles.get("inclinacion_tronco", "")
+
+                # Determinar estados
+                estado_izq = self._get_status(rodilla_izq, exercise_type, "izq")
+                estado_der = self._get_status(rodilla_der, exercise_type, "der")
+
+                # Para biomecánica, dejar vacías las columnas de saltos
+                altura_salto = tiempo_vuelo = simetria_piernas = indice_potencia = ""
+                tipo_analisis = "Biomecánica"
 
             # Detectar riesgos
             hay_riesgo = "🔴 SÍ" if any(x in feedback for x in ["riesgo", "Riesgo"]) else "✅ No"
@@ -214,7 +241,13 @@ class GoogleSheetsManager:
                 hay_riesgo,
                 feedback_principal,
                 image_url or "",
-                athlete_email or ""  # Agregar email del atleta
+                athlete_email or "",
+                # Columnas de saltos
+                str(altura_salto) if altura_salto else "",
+                str(tiempo_vuelo) if tiempo_vuelo else "",
+                str(simetria_piernas) if simetria_piernas else "",
+                str(indice_potencia) if indice_potencia else "",
+                tipo_analisis
             ]
 
             # Agregar a Google Sheets
