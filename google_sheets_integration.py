@@ -248,8 +248,11 @@ class GoogleSheetsManager:
             ]
 
             # Agregar a Google Sheets
+            num_rows = len(self.worksheet.col_values(1))
+            print(f"📝 Worksheet tiene {num_rows} filas")
+            print(f"📝 Agregando fila {num_rows + 1} a Google Sheets")
             self.worksheet.append_row(row)
-            print(f"✅ Análisis de {athlete_name} guardado en Google Sheets")
+            print(f"✅ Análisis de {athlete_name} guardado en Google Sheets (Fila {num_rows + 1})")
             return True
 
         except Exception as e:
