@@ -66,6 +66,22 @@ def analyze_frame(image_bgr, exercise_type):
 
         angles = {}
 
+        # ⚠️ Check if this is a jump analysis (coming soon)
+        if exercise_type in ["salto_vertical", "salto_horizontal"]:
+            # Fase 2: Implementar análisis de saltos
+            # Por ahora, retornamos un análisis placeholder
+            angles["postura_inicial"] = 0
+            # Dibujar esqueleto igual
+            annotated = image_bgr.copy()
+            mp_drawing.draw_landmarks(
+                annotated,
+                results.pose_landmarks,
+                mp_pose.POSE_CONNECTIONS,
+                mp_drawing.DrawingSpec(color=(50, 255, 120), thickness=2, circle_radius=4),
+                mp_drawing.DrawingSpec(color=(0, 180, 255), thickness=2),
+            )
+            return angles, annotated
+
         # Rodillas y caderas (los originales que funcionaban)
         l_knee = calculate_angle(pt(L.LEFT_HIP.value),       pt(L.LEFT_KNEE.value),  pt(L.LEFT_ANKLE.value))
         r_knee = calculate_angle(pt(L.RIGHT_HIP.value),      pt(L.RIGHT_KNEE.value), pt(L.RIGHT_ANKLE.value))
@@ -166,7 +182,11 @@ def extract_key_frame(video_path, exercise_type):
 
             if exercise_type == "sentadilla":
                 score = calculate_angle(pt(L.LEFT_HIP.value), pt(L.LEFT_KNEE.value), pt(L.LEFT_ANKLE.value))
+            elif exercise_type in ["salto_vertical", "salto_horizontal"]:
+                # Para saltos, buscar el frame donde está más erguido (cadera arriba)
+                score = calculate_angle(pt(L.LEFT_SHOULDER.value), pt(L.LEFT_HIP.value), pt(L.LEFT_KNEE.value))
             else:
+                # peso_muerto
                 score = calculate_angle(pt(L.LEFT_SHOULDER.value), pt(L.LEFT_HIP.value), pt(L.LEFT_KNEE.value))
 
             if score < best_score:
@@ -192,6 +212,11 @@ def generate_feedback(angles, exercise_type, athlete_name=""):
     riesg = []
     ejer  = []
     name_str = f"{athlete_name}, " if athlete_name else ""
+
+    # Análisis de saltos (Fase 2)
+    if exercise_type in ["salto_vertical", "salto_horizontal"]:
+        title = "Salto Vertical" if exercise_type == "salto_vertical" else "Salto Horizontal"
+        return f"Análisis de {title}:\n\n🚀 Análisis de saltos en desarrollo\n\nEsta funcionalidad está siendo mejorada para proporcionarte un análisis más detallado de:\n• Altura y potencia del salto\n• Simetría de las extremidades\n• Fase de despegue y aterrizaje\n• Recomendaciones personalizadas para mejorar tu saltabilidad\n\nEstará disponible muy pronto. ¡Gracias por tu paciencia!"
 
     if exercise_type == "sentadilla":
         rod_izq = angles.get("rodilla_izq", 0)
@@ -347,6 +372,12 @@ header{background:linear-gradient(135deg,#0a0e1a,#0f1f3d);border-bottom:1px soli
 .athlete-badge{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--accent2)}
 main{padding:16px;max-width:600px;margin:0 auto}
 .section-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px}
+.mode-selector{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.mode-btn{background:var(--card);border:2px solid var(--border);color:var(--text);padding:16px 10px;border-radius:12px;cursor:pointer;text-align:center;transition:all .2s}
+.mode-btn.active{border-color:var(--accent);background:rgba(0,212,255,.1);box-shadow:0 0 20px rgba(0,212,255,.2)}
+.mode-btn .emoji{font-size:28px;display:block;margin-bottom:6px}
+.mode-btn .name{font-size:14px;font-weight:700;display:block}
+.mode-btn .desc{font-size:11px;color:var(--muted);margin-top:3px}
 .exercise-selector{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 .exercise-btn{background:var(--card);border:2px solid var(--border);color:var(--text);padding:14px 10px;border-radius:12px;cursor:pointer;text-align:center;transition:all .2s}
 .exercise-btn.active{border-color:var(--accent);background:rgba(0,212,255,.1)}
@@ -440,8 +471,20 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
 </header>
 
 <main>
+  <p class="section-label">Tipo de Análisis</p>
+  <div class="mode-selector">
+    <button class="mode-btn active" id="btn-biomecania" onclick="selectMode('biomecania')">
+      <span class="emoji">🏋️</span><span class="name">Biomecánica</span>
+      <span class="desc">Técnica de movimiento</span>
+    </button>
+    <button class="mode-btn" id="btn-saltos" onclick="selectMode('saltos')">
+      <span class="emoji">🦘</span><span class="name">Saltos</span>
+      <span class="desc">Análisis de saltabilidad</span>
+    </button>
+  </div>
+
   <p class="section-label">Ejercicio</p>
-  <div class="exercise-selector">
+  <div id="biomecania-exercises" class="exercise-selector">
     <button class="exercise-btn active" id="btn-sentadilla" onclick="selectExercise('sentadilla')">
       <span class="emoji">🏋️</span><span class="name">Sentadilla</span>
       <span class="desc">Rodillas · Cadera · Simetría</span>
@@ -449,6 +492,17 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
     <button class="exercise-btn" id="btn-peso_muerto" onclick="selectExercise('peso_muerto')">
       <span class="emoji">💪</span><span class="name">Peso Muerto</span>
       <span class="desc">Cadera · Columna · Tronco</span>
+    </button>
+  </div>
+
+  <div id="saltos-exercises" class="exercise-selector" style="display:none">
+    <button class="exercise-btn active" id="btn-salto_vertical" onclick="selectExercise('salto_vertical')">
+      <span class="emoji">⬆️</span><span class="name">Salto Vertical</span>
+      <span class="desc">Altura · Potencia · Despegue</span>
+    </button>
+    <button class="exercise-btn" id="btn-salto_horizontal" onclick="selectExercise('salto_horizontal')">
+      <span class="emoji">➡️</span><span class="name">Salto Horizontal</span>
+      <span class="desc">Distancia · Balance</span>
     </button>
   </div>
 
@@ -525,6 +579,7 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
 </div>
 
 <script>
+let selectedMode     = 'biomecania';
 let selectedExercise = 'sentadilla';
 let selectedFile     = null;
 let cameraStream     = null;
@@ -540,6 +595,22 @@ function startSession(e) {
   document.getElementById('registration-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   document.getElementById('athlete-badge').textContent = athlete.nombre + ' ' + athlete.apellido;
+}
+
+function selectMode(mode) {
+  selectedMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+
+  if (mode === 'biomecania') {
+    document.getElementById('biomecania-exercises').style.display = 'grid';
+    document.getElementById('saltos-exercises').style.display = 'none';
+    selectExercise('sentadilla');
+  } else if (mode === 'saltos') {
+    document.getElementById('biomecania-exercises').style.display = 'none';
+    document.getElementById('saltos-exercises').style.display = 'grid';
+    selectExercise('salto_vertical');
+  }
 }
 
 function selectExercise(type) {
@@ -729,7 +800,11 @@ async function downloadPDF() {
   const { jsPDF } = window.jspdf;
   const doc  = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
   const W    = 210;
-  const ex   = selectedExercise === 'sentadilla' ? 'Sentadilla' : 'Peso Muerto';
+  let ex = selectedExercise;
+  if (selectedExercise === 'sentadilla') ex = 'Sentadilla';
+  else if (selectedExercise === 'peso_muerto') ex = 'Peso Muerto';
+  else if (selectedExercise === 'salto_vertical') ex = 'Salto Vertical';
+  else if (selectedExercise === 'salto_horizontal') ex = 'Salto Horizontal';
   const fecha = new Date().toLocaleDateString('es-AR');
 
   // ── Encabezado ──────────────────────────────────────────
