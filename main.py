@@ -216,13 +216,14 @@ def calculate_jump_metrics(jump_data, jump_type):
 def draw_jump_analysis(frame, metrics, jump_type):
     """
     Dibuja análisis de salto en el frame
-    Solo muestra la imagen con skeleton, sin texto
+    Solo muestra la imagen, sin textos superpuestos
     """
     if frame is None:
-        return frame if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
+        return np.zeros((480, 640, 3), dtype=np.uint8)
 
-    # Retornar la imagen tal cual, sin agregar texto
-    return frame
+    annotated = frame.copy()
+    # No dibujar nada, solo retornar la imagen limpia
+    return annotated
 
 
 # ─── POSE ANALYSIS ──────────────────────────────────────────────────────────
