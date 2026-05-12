@@ -248,13 +248,15 @@ class GoogleSheetsManager:
             ]
 
             # Agregar a Google Sheets
-            num_rows = len(self.worksheet.col_values(1))
+            all_values = self.worksheet.get_all_values()
+            num_rows = len(all_values)
             print(f"📝 Worksheet tiene {num_rows} filas")
             print(f"📝 Agregando fila {num_rows + 1} a Google Sheets")
             print(f"📝 Datos a agregar: {len(row)} columnas")
 
             try:
                 self.worksheet.append_row(row)
+                self.worksheet.reload()
                 print(f"✅ Análisis de {athlete_name} guardado en Google Sheets (Fila {num_rows + 1})")
             except Exception as append_err:
                 print(f"❌ Error en append_row(): {append_err}")
