@@ -473,7 +473,7 @@ def generate_feedback(angles, exercise_type, athlete_name=""):
 
         # Tiempo de vuelo
         tiempo_vuelo_sec = tiempo_vuelo / 1000
-        bien.append(f"Tiempo de vuelo: {tiempo_vuelo_ms} ms ({tiempo_vuelo_sec:.2f}s)")
+        bien.append(f"Tiempo de vuelo: {tiempo_vuelo} ms ({tiempo_vuelo_sec:.2f}s)")
 
         # Recomendaciones generales
         if not ejer or len(ejer) == 1:
