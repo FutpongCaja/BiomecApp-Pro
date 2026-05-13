@@ -771,10 +771,12 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
 
   <div class="tab-panel" id="tab-record">
     <div id="record-start-area">
-      <button class="start-camera-btn" onclick="startRecording()">📹 Iniciar Grabación</button>
+      <button class="start-camera-btn" onclick="startRecording()" style="background:#00ff00;color:#000;font-weight:bold;font-size:16px">
+        🔴 EMPEZAR A GRABAR
+      </button>
       <div style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center">
-        <p>Toca para empezar a grabar</p>
-        <p>Toca de nuevo para finalizar</p>
+        <p>Toca para empezar</p>
+        <p>El video se procesa automáticamente</p>
       </div>
     </div>
     <div id="record-active" style="display:none">
@@ -782,9 +784,11 @@ input:checked+.toggle-slider:before{transform:translateX(18px)}
         <video id="record-feed" autoplay playsinline muted style="transform: scaleX(-1);"></video>
         <div class="camera-overlay">
           <div style="font-size:20px;color:#ff4444;font-weight:bold" id="record-timer">00:00</div>
-          <div style="display:flex;gap:10px;justify-content:center">
-            <button class="capture-btn" onclick="switchCamera()" style="font-size:12px;padding:8px">🔄 Cambiar</button>
-            <button class="stop-btn" id="record-stop-btn" onclick="stopRecording()">⏹ Detener</button>
+          <div style="display:flex;gap:10px;justify-content:center;flex-direction:column">
+            <button class="stop-btn" id="record-stop-btn" onclick="stopRecording()" style="background:#ff4444;color:#fff;font-weight:bold;font-size:16px">
+              ⏹ PARAR
+            </button>
+            <button class="capture-btn" onclick="switchCamera()" style="font-size:12px;padding:8px">🔄 Cambiar Cámara</button>
           </div>
         </div>
       </div>
