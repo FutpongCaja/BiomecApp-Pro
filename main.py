@@ -627,7 +627,7 @@ main{padding:16px;max-width:600px;margin:0 auto}
 .file-preview{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;display:none;align-items:center;gap:12px;margin-bottom:16px}
 .file-name{font-size:13px;font-weight:600}
 .file-size{font-size:11px;color:var(--muted)}
-.camera-container{position:relative;border-radius:12px;overflow:hidden;background:#000;margin-bottom:16px;max-height:380px}
+.camera-container{position:relative;border-radius:12px;overflow:hidden;background:#000;margin-bottom:16px;width:100%;min-height:500px;max-height:90vh}
 #camera-feed{width:100%;display:block;object-fit:cover}
 .camera-overlay{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
 .capture-btn{background:var(--accent2);color:#000;border:none;padding:12px 22px;border-radius:50px;font-weight:700;font-size:14px;cursor:pointer}
@@ -885,12 +885,25 @@ function selectExercise(type) {
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode }, audio: false });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
     const video = document.getElementById('record-feed');
     video.srcObject = stream;
 
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+    // Probar diferentes codecs
+    let mimeType = 'video/webm;codecs=vp9';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = 'video/webm;codecs=vp8';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+    }
+
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) recordedChunks.push(e.data);
